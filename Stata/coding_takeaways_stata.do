@@ -74,7 +74,7 @@ esttab using "path.text", ///
 GRAPHING - STYLING
 *******************************************************************************/
 
-line y x, lstyle(width(thick))
+line y x, lstyle(width(thick)) LPattern(shortdash_dot) color(red)
 
 
 
@@ -117,4 +117,8 @@ estimates store ests
 coefplot ests, yline(0, lcolor(black)) vertical xline(`event_xline') graphregion(color(white)) xtitle("Relative Time") ytitle("Coefficient") title("Outcome") keep(*.rel_time_new) recast(connected) ciopts(recast(rcap)) omitted labels nokey baselevels
 
 
+
+
+
+// https://www.google.com/search?client=firefox-b-d&q=stata+colors#vhid=OibVC1Nd5XFYAM&vssid=_fU7pZtq6N_iBhbIPk8fa6Q8_46
 
