@@ -1,0 +1,40 @@
+# ==============================================================================
+# Rasmus Duret - shared theming source of truth
+#
+# This file is the single place color/font values are defined. Every
+# per-language theme file under theming/<lang>/ should mirror these values
+# exactly (most languages here can't parse YAML natively - e.g. Stata - so
+# values are copy-embedded into each theme file rather than loaded at
+# runtime). When you change a value here, update every theme file that
+# embeds it.
+#
+# STATUS: placeholder. Colors/fonts below are not final - do not treat them
+# as the real palette yet. Fill in and then propagate to the per-language
+# theme files in theming/R, theming/Stata, theming/python, theming/latex.
+# ==============================================================================
+
+font:
+  primary: TODO      # e.g. "Lato" - exact family name as installed
+  fallback: sans-serif
+
+colors:
+  # Core qualitative palette (categorical series, group comparisons)
+  qualitative:
+    - "#TODO1"
+    - "#TODO2"
+    - "#TODO3"
+    - "#TODO4"
+
+  # Sequential (low -> high, single hue ramp)
+  sequential: "#TODO_LOW -> #TODO_HIGH"
+
+  # Diverging (negative <-> positive around a neutral midpoint)
+  diverging: "#TODO_NEG -> #TODO_MID -> #TODO_POS"
+
+  # Semantic roles used across plots/tables
+  accent: "#TODO"
+  positive: "#TODO"
+  negative: "#TODO"
+  neutral_grey: "#TODO"
+  background: "#TODO"
+  text: "#TODO"
