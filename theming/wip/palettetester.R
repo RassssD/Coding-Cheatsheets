@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 # Setup (one-off):
 #   install.packages(c("shiny","ggplot2","dplyr","tibble","showtext","sysfonts",
-#                       "colourpicker","colorspace"))
+#                       "colourpicker","colorspace","png"))
 #
 # Run:
 #   shiny::runApp("app.R")   # from this file's folder
@@ -21,10 +21,11 @@ library(showtext)
 library(sysfonts)
 library(colourpicker)
 library(colorspace)
+library(png)
 
 # ---- Fonts ------------------------------------------------------------------
-font_families <- c("Inter", "IBM Plex Sans", "Source Sans 3", "Fira Sans",
-                   "Roboto", "EB Garamond", "Source Serif 4", "IBM Plex Serif")
+# Shortlisted to the three fonts actually under consideration.
+font_families <- c("Inter", "Fira Sans", "Lexend")
 
 for (f in font_families) {
   if (!(f %in% sysfonts::font_families())) {
@@ -42,11 +43,57 @@ palettes_qual <- list(
   "Wong"       = c("#000000","#E69F00","#56B4E9","#009E73","#F0E442","#0072B2","#D55E00")
 )
 palettes_seq <- c("viridis", "magma", "plasma", "cividis", "mako")
-accent_choices <- c("Red"    = "#D7301F",
-                    "Blue"   = "#0570B0",
-                    "Black"  = "#000000",
-                    "Orange" = "#E6550D",
-                    "Green"  = "#238B45")
+
+# Names must match plot_registry's keys in server() — used to populate the
+# "Print size" tab's plot picker before plot_registry itself exists.
+plot_choices <- c("Time series", "Event study", "Binscatter", "Density",
+                  "Grouped bar", "Stacked area", "Small multiples", "Forest plot")
+
+# Page presets for the "Print size" tab. Physical mm, matching draw_acc.R's
+# own unit. Presentation slide = the modern PowerPoint/Keynote/Google Slides
+# 16:9 widescreen default (13.333 x 7.5in). Each also carries dummy "standard
+# insert" content (a heading + body text/bullets, at font sizes typical for
+# that format) so the chart renders next to something familiar to judge
+# scale against, rather than alone on a blank page.
+page_presets <- list(
+  "A4 page" = list(
+    w_mm = 210, h_mm = 297, note = "210 × 297mm", margin_mm = 25,
+    title = "3. Results", title_pt = 14, body_pt = 11,
+    body_lines = c(
+      "Table 2 reports the main estimates. Figure 1 shows the corresponding",
+      "event-study coefficients, with 95% confidence intervals shaded around",
+      "each point estimate. Pre-trend coefficients are jointly insignificant",
+      "(p = 0.41), consistent with the parallel-trends assumption."
+    ),
+    caption = "Figure 1. Event-study estimates, treatment at t = 0."
+  ),
+  "Presentation slide" = list(
+    w_mm = 338.67, h_mm = 190.5, note = "16:9, 338.7 × 190.5mm", margin_mm = 15,
+    title = "Employment effects", title_pt = 32, body_pt = 20,
+    body_lines = c("Pre-trends are flat and jointly insignificant"),
+    caption = "Source: author's calculations."
+  ),
+  "Mobile screen" = list(
+    w_mm = 70, h_mm = 150, note = "≈70 × 150mm", margin_mm = 5,
+    title = "Jobs report", title_pt = 15, body_pt = 10,
+    body_lines = c("New data show manufacturing", "employment continued its", "decade-long decline."),
+    caption = NULL
+  )
+)
+
+# Static display box for the tab's plotOutput -- fit each page's true mm
+# aspect ratio into a 440x650px budget so nothing renders oddly cropped or
+# huge; the actual rendered content is always true-to-scale regardless.
+fit_dims <- function(w_mm, h_mm, max_w = 440, max_h = 650) {
+  scale <- min(max_w / w_mm, max_h / h_mm)
+  list(w = round(w_mm * scale), h = round(h_mm * scale))
+}
+for (.nm in names(page_presets)) {
+  d <- fit_dims(page_presets[[.nm]]$w_mm, page_presets[[.nm]]$h_mm)
+  page_presets[[.nm]]$disp_w <- d$w
+  page_presets[[.nm]]$disp_h <- d$h
+}
+rm(.nm)
 
 # ---- Merge brand colours into base palette ---------------------------------
 # Slot primary at position 1, secondary at 2. Drop the base colour nearest
@@ -262,7 +309,7 @@ theme_sandbox <- function(base_size = 12,
       legend.text      = element_text(size = base_size * 0.85, colour = s$mid),
       legend.key.size  = grid::unit(legend_key_pt, "pt"),
       strip.text       = element_text(size = base_size * 0.9, face = "bold", colour = s$fg),
-      strip.background = element_rect(fill = s$strip, colour = NA),
+      strip.background = element_rect(fill = "white", colour = "black", linewidth = 0.4),
       plot.margin      = margin(10, 12, 8, 10)
     )
 }
@@ -273,29 +320,32 @@ theme_sandbox <- function(base_size = 12,
 # and editable afterwards, and the "Code" tab reflects whatever the controls
 # currently say regardless of which (if any) preset was last picked.
 theme_presets <- list(
-  "Editorial" = list(
-    dark = FALSE, base_family = "Source Serif 4", title_family = "IBM Plex Sans",
-    base_size = 12, title_ratio = 1.25, grid = "horizontal", minor = FALSE,
-    axis_lines = TRUE, panel_bg = "offwhite", legend_pos = "bottom", legend_key = 10,
-    line_width = 0.9, point_size = 1.6, alpha = 0.6
-  ),
-  "Technical (dark)" = list(
-    dark = TRUE, base_family = "IBM Plex Sans", title_family = "(same as base)",
-    base_size = 12, title_ratio = 1.15, grid = "both", minor = TRUE,
-    axis_lines = TRUE, panel_bg = "white", legend_pos = "right", legend_key = 10,
-    line_width = 1.0, point_size = 1.8, alpha = 0.7
-  ),
-  "Presentation" = list(
+  # Baseline / default: casual use (social posts, blog posts, etc.) — mirrors
+  # the sandbox's own default control values exactly, so "Default" and
+  # "Custom" with nothing touched yet are the same theme.
+  "Default" = list(
     dark = FALSE, base_family = "Inter", title_family = "(same as base)",
-    base_size = 15, title_ratio = 1.3, grid = "none", minor = FALSE,
-    axis_lines = TRUE, panel_bg = "white", legend_pos = "top", legend_key = 14,
-    line_width = 1.4, point_size = 2.4, alpha = 0.75
+    base_size = 14, title_ratio = 1.2, grid = "horizontal", minor = FALSE,
+    axis_lines = TRUE, panel_bg = "white", legend_pos = "bottom", legend_key = 14,
+    line_width = 1.2, point_size = 2.0, alpha = 0.3
   ),
-  "Academic / print" = list(
-    dark = FALSE, base_family = "EB Garamond", title_family = "(same as base)",
+  # Academic article: print-column sized, minimal decoration (no minor grid),
+  # restrained line/point weight and alpha so it holds up in greyscale print.
+  "Academic article" = list(
+    dark = FALSE, base_family = "Fira Sans", title_family = "(same as base)",
     base_size = 11, title_ratio = 1.1, grid = "horizontal", minor = FALSE,
     axis_lines = TRUE, panel_bg = "white", legend_pos = "bottom", legend_key = 8,
     line_width = 0.7, point_size = 1.3, alpha = 0.5
+  ),
+  # Academic presentation: same font and text sizing as Default (big enough
+  # already, no need to go larger) — legible from the back of a room comes
+  # from bolder lines/points and a cleaner (gridline-free) panel instead.
+  # Legend stays at the bottom like every other preset.
+  "Academic presentation" = list(
+    dark = FALSE, base_family = "Inter", title_family = "(same as base)",
+    base_size = 14, title_ratio = 1.2, grid = "none", minor = FALSE,
+    axis_lines = TRUE, panel_bg = "white", legend_pos = "bottom", legend_key = 18,
+    line_width = 1.6, point_size = 2.6, alpha = 0.6
   )
 )
 
@@ -310,13 +360,8 @@ ui <- fluidPage(
               href = paste0(
                 "https://fonts.googleapis.com/css2",
                 "?family=Inter:wght@400;600",
-                "&family=IBM+Plex+Sans:wght@400;600",
-                "&family=Source+Sans+3:wght@400;600",
                 "&family=Fira+Sans:wght@400;600",
-                "&family=Roboto:wght@400;700",
-                "&family=EB+Garamond:wght@400;600",
-                "&family=Source+Serif+4:wght@400;600",
-                "&family=IBM+Plex+Serif:wght@400;600",
+                "&family=Lexend:wght@400;600",
                 "&display=swap")),
     tags$style(HTML("
       .well { background-color: #FAFAFA; }
@@ -330,25 +375,25 @@ ui <- fluidPage(
       h4("Preset"),
       selectInput("preset", NULL,
                   choices = c("Custom" = "", names(theme_presets)),
-                  selected = ""),
+                  selected = "Default"),
       helpText(tags$small("Loads a starting point into the controls below — everything stays editable after.")),
       hr(),
       h4("Brand"),
       colourpicker::colourInput("primary", "Primary (position 1)",
-                                value = "#0E7C86", allowTransparent = FALSE),
+                                value = "#1E53A4", allowTransparent = FALSE),
       colourpicker::colourInput("secondary", "Secondary (position 2)",
-                                value = "#C87533", allowTransparent = FALSE),
+                                value = "#CAB06B", allowTransparent = FALSE),
       checkboxInput("dark", "Dark mode", value = FALSE),
       hr(),
       h4("Color system"),
-      helpText(tags$small("Primary above, plus a contrast (opposition) colour and an optional third accent — each expanded into a light-to-dark ramp on the Color system tab.")),
+      helpText(tags$small("Primary above, plus a contrast (opposition) colour and an optional third accent — each expanded into a light-to-dark ramp on the Color system tab. Single-series plots (binscatter, facets, forest plot) default to the primary colour.")),
       colourpicker::colourInput("contrast", "Contrast (opposition)",
-                                value = "#B5482A", allowTransparent = FALSE),
-      checkboxInput("use_extra", "Add a third accent colour", value = FALSE),
+                                value = "#E72922", allowTransparent = FALSE),
+      checkboxInput("use_extra", "Add a third accent colour", value = TRUE),
       conditionalPanel(
         condition = "input.use_extra",
         colourpicker::colourInput("extra", "Extra accent",
-                                  value = "#4C6B3A", allowTransparent = FALSE)
+                                  value = "#006637", allowTransparent = FALSE)
       ),
       sliderInput("ramp_n", "Variants per ramp",
                   min = 3, max = 9, value = 5, step = 2),
@@ -366,8 +411,6 @@ ui <- fluidPage(
       radioButtons("seq_source", "Sequential fill source",
                    choices = c("Named palette" = "named", "Primary ramp" = "ramp"),
                    selected = "named", inline = TRUE),
-      selectInput("accent", "Emphasis colour (single-series plots)",
-                  choices = accent_choices, selected = "#D7301F"),
       hr(),
       h4("Typography"),
       selectInput("base_family", "Base font",
@@ -376,15 +419,15 @@ ui <- fluidPage(
                   choices = c("(same as base)", font_families),
                   selected = "(same as base)"),
       sliderInput("base_size", "Base size",
-                  min = 10, max = 14, value = 12, step = 1),
+                  min = 10, max = 20, value = 14, step = 1),
       sliderInput("title_ratio", "Title / axis text ratio",
                   min = 1, max = 1.6, value = 1.2, step = 0.05),
       hr(),
       h4("Grid & panel"),
       radioButtons("grid", "Gridlines",
                    choices = c("none","horizontal","both"),
-                   selected = "both", inline = TRUE),
-      checkboxInput("minor", "Minor gridlines", value = TRUE),
+                   selected = "horizontal", inline = TRUE),
+      checkboxInput("minor", "Minor gridlines", value = FALSE),
       radioButtons("panel_bg", "Background",
                    choices = c("white","offwhite","transparent"),
                    selected = "white", inline = TRUE),
@@ -392,24 +435,24 @@ ui <- fluidPage(
       hr(),
       h4("Geom defaults"),
       sliderInput("line_width", "Line width",
-                  min = 0.3, max = 2.5, value = 0.9, step = 0.1),
+                  min = 0.3, max = 2.5, value = 1.2, step = 0.1),
       sliderInput("point_size", "Point size",
-                  min = 0.5, max = 4.0, value = 1.6, step = 0.1),
+                  min = 0.5, max = 4.0, value = 2.0, step = 0.1),
       sliderInput("alpha", "Alpha (fills / ribbons)",
-                  min = 0.1, max = 1.0, value = 0.65, step = 0.05),
+                  min = 0.1, max = 1.0, value = 0.3, step = 0.05),
       hr(),
       h4("Legend"),
       radioButtons("legend_pos", "Position",
                    choices = c("top","right","bottom","none"),
                    selected = "bottom", inline = TRUE),
       sliderInput("legend_key", "Key size (pt)",
-                  min = 6, max = 20, value = 10, step = 1),
+                  min = 6, max = 20, value = 14, step = 1),
       hr(),
       h4("Text on plots"),
       checkboxInput("show_title", "Titles", value = TRUE),
-      checkboxInput("show_subtitle", "Subtitles", value = FALSE),
+      checkboxInput("show_subtitle", "Subtitles", value = TRUE),
       checkboxInput("show_axis_labels", "Axis labels", value = TRUE),
-      checkboxInput("show_caption", "Captions", value = FALSE)
+      checkboxInput("show_caption", "Captions", value = TRUE)
     ),
     mainPanel(
       width = 9,
@@ -430,7 +473,13 @@ ui <- fluidPage(
                  p(em("Primary/contrast/extra, each auto-expanded into a light-to-dark ramp. Drives the sequential fill below when \"Primary ramp\" is selected in the sidebar, and the diverging scale emitted on the Code tab.")),
                  uiOutput("ramp_preview"),
                  hr(),
-                 plotOutput("p_seq", height = "320px")
+                 plotOutput("p_seq", height = "320px"),
+                 hr(),
+                 p(em("Full ramp, in use: one line per variant, faceted by which colour it came from.")),
+                 plotOutput("p_ramp_facet", height = "320px"),
+                 hr(),
+                 p(em("Simplified ramp: just light / base / dark for primary and contrast, on one graph.")),
+                 plotOutput("p_ramp3", height = "320px")
         ),
         tabPanel("Accessibility",
                  br(),
@@ -449,7 +498,25 @@ ui <- fluidPage(
                  br(),
                  p(em("Paste this into ", code("themes.R"),
                       " and ", code("source()"), " at the top of every project.")),
-                 verbatimTextOutput("code_output"))
+                 verbatimTextOutput("code_output")),
+        tabPanel("Print size",
+                 br(),
+                 p(em("Renders a plot from the ", code("Plots"), " tab at its literal export size (mm) — the way ",
+                      code("draw_acc.R"), " renders true-to-scale — then drops that fixed image into a standard mock-up of the ",
+                      "chosen format, scaled (up or down) and centred to fill the space the way it actually would once inserted: ",
+                      "resized to fit a phone screen, filling most of a slide, centred on an A4 page. Realistic heading/body text ",
+                      "renders alongside it at that format's typical size, so the chart's own text has something familiar to judge ",
+                      "scale against.")),
+                 fluidRow(
+                   column(4, selectInput("size_plot", "Plot", choices = plot_choices)),
+                   column(4, numericInput("size_x", "Export width (mm)", value = 120, min = 10, max = 400, step = 5)),
+                   column(4, numericInput("size_y", "Export height (mm)", value = 80, min = 10, max = 400, step = 5))
+                 ),
+                 radioButtons("size_page", "Shown inserted into",
+                              choices = names(page_presets), selected = "A4 page", inline = TRUE),
+                 uiOutput("size_plot_box"),
+                 uiOutput("size_notes")
+        )
       )
     )
   )
@@ -554,22 +621,25 @@ server <- function(input, output, session) {
   scale_fil_d <- function() scale_fill_manual(values = pal_current(),   name = NULL)
   scale_fil_5 <- function() scale_fill_manual(values = pal_full5(),     name = NULL)
 
-  # ---- 1. Time series ------------------------------------------------------
-  output$p_ts <- renderPlot({
+  # ---- 1-8. Plots tab, built as reusable functions --------------------------
+  # Each plot is a plain function (not `renderPlot`) so the same ggplot object
+  # can be reused by the "Print size" tab (renders it at an exact physical
+  # size via draw_acc()) without duplicating the plotting code.
+  build_ts <- function() {
     n <- as.integer(input$n_series)
     d <- gdp_data |> filter(country %in% countries7[seq_len(n)])
     ggplot(d, aes(year, gdp_index, colour = country)) +
       geom_line(linewidth = input$line_width) +
+      geom_point(size = input$point_size * 0.6) +
       scale_col_d() +
       labs_(title    = "Real GDP index, selected countries",
             subtitle = "1980 = 100",
             x = "Year", y = "GDP index",
             caption  = "Source: Simulated data.") +
       th()
-  })
+  }
 
-  # ---- 2. Event study, three specs ----------------------------------------
-  output$p_es <- renderPlot({
+  build_es <- function() {
     s <- scheme()
     dw <- position_dodge(width = 0.35)
     ggplot(event_study, aes(period, estimate, colour = spec, group = spec)) +
@@ -578,19 +648,18 @@ server <- function(input, output, session) {
                  linewidth = 0.3, colour = s$soft) +
       geom_line(linewidth = input$line_width * 0.7, position = dw) +
       geom_pointrange(aes(ymin = lower, ymax = upper),
-                      size = input$point_size / 3,
+                      size = input$point_size * 0.6, fatten = 1,
                       linewidth = input$line_width * 0.6,
-                      position = dw) +
+                      position = dw, key_glyph = "point") +
       scale_col_d() +
       labs_(title    = "Event study, three specifications",
             subtitle = "Coefficients with 95% CIs, treatment at t = 0",
             x = "Period relative to treatment", y = "Estimated effect",
             caption  = "Source: Simulated data.") +
       th()
-  })
+  }
 
-  # ---- 3. Binscatter -------------------------------------------------------
-  output$p_bin <- renderPlot({
+  build_bin <- function() {
     s <- scheme()
     bins <- mincer |>
       mutate(bin = ntile(schooling, 20)) |>
@@ -599,19 +668,18 @@ server <- function(input, output, session) {
                 log_wage  = mean(log_wage), .groups = "drop")
     ggplot(bins, aes(schooling, log_wage)) +
       geom_smooth(method = "lm", se = TRUE,
-                  colour = input$accent, fill = input$accent,
+                  colour = input$primary, fill = input$primary,
                   alpha = input$alpha * 0.3,
                   linewidth = input$line_width) +
-      geom_point(size = input$point_size * 1.4, colour = s$fg) +
+      geom_point(size = input$point_size * 0.6, colour = s$fg) +
       labs_(title    = "Log wages and schooling",
             subtitle = "Binscatter, 20 bins",
             x = "Years of schooling", y = "Log hourly wage",
             caption  = "Source: Simulated Mincer DGP.") +
       th()
-  })
+  }
 
-  # ---- 4. Density comparison ----------------------------------------------
-  output$p_dens <- renderPlot({
+  build_dens <- function() {
     ggplot(density_data, aes(y, fill = group, colour = group)) +
       geom_density(alpha = input$alpha * 0.55,
                    linewidth = input$line_width * 0.7) +
@@ -621,10 +689,9 @@ server <- function(input, output, session) {
             x = "Log earnings, post-period", y = "Density",
             caption  = "Source: Simulated data.") +
       th()
-  })
+  }
 
-  # ---- 5. Grouped bar — sectoral shares -----------------------------------
-  output$p_bar <- renderPlot({
+  build_bar <- function() {
     s <- scheme()
     ggplot(sector_shares, aes(country, share, fill = sector)) +
       geom_col(position = position_dodge(0.75), width = 0.7,
@@ -635,10 +702,9 @@ server <- function(input, output, session) {
             x = NULL, y = "Share of employment (%)",
             caption  = "Source: Simulated data.") +
       th()
-  })
+  }
 
-  # ---- 6. Stacked area -----------------------------------------------------
-  output$p_area <- renderPlot({
+  build_area <- function() {
     s <- scheme()
     ggplot(area_data, aes(year, share, fill = sector)) +
       geom_area(alpha = pmin(1, input$alpha + 0.25),
@@ -649,34 +715,194 @@ server <- function(input, output, session) {
             x = "Year", y = "Share of employment (%)",
             caption  = "Source: Simulated data.") +
       th()
-  })
+  }
 
-  # ---- 7. Faceted small multiples -----------------------------------------
-  output$p_facet <- renderPlot({
+  build_facet <- function() {
     ggplot(region_data, aes(year, y)) +
-      geom_line(colour = input$accent, linewidth = input$line_width) +
+      geom_line(colour = input$primary, linewidth = input$line_width) +
+      geom_point(colour = input$primary, size = input$point_size * 0.6) +
       facet_wrap(~ region, ncol = 3) +
       labs_(title    = "Regional GDP, 2000 – 2020",
             subtitle = "Index, 2000 = 100",
             x = "Year", y = "GDP index",
             caption  = "Source: Simulated data.") +
       th()
-  })
+  }
 
-  # ---- 8. Forest / coefficient plot ---------------------------------------
-  output$p_forest <- renderPlot({
+  build_forest <- function() {
     s <- scheme()
     ggplot(forest, aes(estimate, var)) +
       geom_vline(xintercept = 0, linewidth = 0.3, colour = s$soft) +
       geom_pointrange(aes(xmin = lower, xmax = upper),
-                      colour = input$accent,
-                      size      = input$point_size / 2.5,
+                      colour = input$primary,
+                      size      = input$point_size * 0.6, fatten = 1,
                       linewidth = input$line_width * 0.7) +
       labs_(title    = "Log-earnings regression, selected coefficients",
             subtitle = "Point estimates with 95% CIs",
             x = "Estimate", y = NULL,
             caption  = "Source: Simulated data.") +
       th()
+  }
+
+  # Registry driving both the Plots tab outputs below and the "Print size"
+  # tab's plot picker.
+  plot_registry <- list(
+    "Time series"      = build_ts,
+    "Event study"      = build_es,
+    "Binscatter"       = build_bin,
+    "Density"          = build_dens,
+    "Grouped bar"      = build_bar,
+    "Stacked area"     = build_area,
+    "Small multiples"  = build_facet,
+    "Forest plot"      = build_forest
+  )
+
+  output$p_ts     <- renderPlot({ build_ts() })
+  output$p_es     <- renderPlot({ build_es() })
+  output$p_bin    <- renderPlot({ build_bin() })
+  output$p_dens   <- renderPlot({ build_dens() })
+  output$p_bar    <- renderPlot({ build_bar() })
+  output$p_area   <- renderPlot({ build_area() })
+  output$p_facet  <- renderPlot({ build_facet() })
+  output$p_forest <- renderPlot({ build_forest() })
+
+  # ---- Print size: export at true size, then scale the image, in context ---
+  # The page itself (background, heading, body text) is drawn directly in
+  # literal physical mm/pt, draw_acc.R-style -- that only comes out true to
+  # scale if the graphics device's own physical size equals the page's real
+  # mm size, so unlike a normal Shiny plot, this fixes the device's pixel
+  # dimensions explicitly (via renderPlot's width/height) to
+  # page_mm / 25.4 * size_dpi at a fixed res, instead of letting Shiny size
+  # it off the browser's arbitrary column width. The CHART itself is
+  # handled differently -- see render_chart_raster()/compute_fit() below.
+  # Only one page is ever shown at once (picked via input$size_page,
+  # rebuilding the plotOutput's own container through renderUI so its CSS
+  # height always matches that page's aspect) -- showing all three side by
+  # side made Shiny's automatic image sizing fight the CSS aspect-ratio
+  # hack that kept each one proportioned, producing overlap.
+  size_dpi <- 96
+
+  # Text-block height math shared between the actual render (page_mockup)
+  # and the fit-scale estimate in size_notes below, so the two can't drift
+  # out of sync with each other.
+  text_metrics <- function(p) {
+    title_h <- p$title_pt / 72 * 25.4 * 1.3
+    line_h  <- p$body_pt  / 72 * 25.4 * 1.4
+    list(title_h = title_h, line_h = line_h,
+         total_h = title_h + 4 + length(p$body_lines) * line_h + 4)
+  }
+
+  # Renders the plot ONCE, as a fixed raster, at its literal export size
+  # (x_mm x y_mm) -- baking in the same true-to-scale text/line proportions
+  # draw_acc.R shows. That raster is then what gets scaled (never
+  # re-rendered) into each page below, because that's what actually happens
+  # when you drop a fixed-size export into a doc/slide/phone and it gets
+  # resized to fit: everything in the image, text included, scales
+  # together -- unlike re-rendering ggplot fresh at a new physical size,
+  # where the theme's point-sized text would stay fixed and only the data
+  # panel would resize.
+  render_chart_raster <- function(plot_obj, x_mm, y_mm, dpi = 300) {
+    tmp <- tempfile(fileext = ".png")
+    on.exit(unlink(tmp))
+    grDevices::png(tmp, width = round(x_mm / 25.4 * dpi), height = round(y_mm / 25.4 * dpi),
+                    res = dpi, bg = "white")
+    ggplot2::ggplot_build(plot_obj) |> ggplot2::ggplot_gtable() |> grid::grid.draw()
+    grDevices::dev.off()
+    png::readPNG(tmp)
+  }
+
+  # Where the raster ends up: scaled (up OR down, preserving aspect) to
+  # fill the space left below the heading/body text, then centred there --
+  # "resized to fit the screen", "centred, taking up most of the slide".
+  compute_fit <- function(preset, x_mm, y_mm) {
+    tm  <- text_metrics(preset)
+    m   <- preset$margin_mm
+    cap_h_mm <- if (!is.null(preset$caption)) (preset$body_pt * 0.8) / 72 * 25.4 * 1.6 else 0
+    avail_w  <- preset$w_mm - 2 * m
+    avail_h  <- (preset$h_mm - m - tm$total_h) - m - cap_h_mm
+    scale    <- max(min(avail_w / x_mm, avail_h / y_mm), 0.02)
+    list(avail_w = avail_w, avail_h = avail_h, cap_h_mm = cap_h_mm,
+         scale = scale, disp_w = x_mm * scale, disp_h = y_mm * scale)
+  }
+
+  # A page isn't blank: draw a standard heading + body text/bullets at that
+  # format's typical size first, so the chart's own text has something
+  # familiar right next to it to judge scale against.
+  page_mockup <- function(plot_obj, preset, x_mm, y_mm) {
+    grid::grid.newpage()
+    grid::rectGrob(gp = grid::gpar(fill = "white", col = "grey45", lwd = 1.2)) |> grid::grid.draw()
+
+    m  <- preset$margin_mm
+    tm <- text_metrics(preset)
+
+    grid::grid.text(preset$title, x = grid::unit(m, "mm"), y = grid::unit(preset$h_mm - m, "mm"),
+                     just = c("left", "top"),
+                     gp = grid::gpar(fontsize = preset$title_pt, fontface = "bold", col = "grey15"))
+    y_cursor <- preset$h_mm - m - tm$title_h - 4
+    for (ln in preset$body_lines) {
+      grid::grid.text(ln, x = grid::unit(m, "mm"), y = grid::unit(y_cursor, "mm"),
+                       just = c("left", "top"),
+                       gp = grid::gpar(fontsize = preset$body_pt, col = "grey35"))
+      y_cursor <- y_cursor - tm$line_h
+    }
+
+    f  <- compute_fit(preset, x_mm, y_mm)
+    cx <- m + f$avail_w / 2
+    cy <- m + f$cap_h_mm + f$avail_h / 2
+    img <- render_chart_raster(plot_obj, x_mm, y_mm)
+    grid::grid.raster(img, x = grid::unit(cx, "mm"), y = grid::unit(cy, "mm"),
+                       width = grid::unit(f$disp_w, "mm"), height = grid::unit(f$disp_h, "mm"))
+
+    if (!is.null(preset$caption)) {
+      grid::grid.text(preset$caption, x = grid::unit(m, "mm"), y = grid::unit(m + f$cap_h_mm * 0.25, "mm"),
+                       just = c("left", "bottom"),
+                       gp = grid::gpar(fontsize = preset$body_pt * 0.8, fontface = "italic", col = "grey45"))
+    }
+  }
+
+  size_plot_obj <- reactive({
+    req(input$size_plot)
+    plot_registry[[input$size_plot]]()
+  })
+
+  # Rebuild the container each time the page choice changes, so its CSS
+  # height (disp_h/disp_w -- see fit_dims()) always matches the newly
+  # selected page's true aspect ratio.
+  output$size_plot_box <- renderUI({
+    req(input$size_page)
+    p <- page_presets[[input$size_page]]
+    tags$div(style = sprintf("max-width: %dpx; margin: 12px auto;", p$disp_w),
+             plotOutput("p_size_page", width = "100%", height = sprintf("%dpx", p$disp_h)))
+  })
+
+  output$p_size_page <- renderPlot({
+    req(input$size_page, input$size_x, input$size_y)
+    p <- page_presets[[input$size_page]]
+    page_mockup(size_plot_obj(), p, input$size_x, input$size_y)
+  }, res = size_dpi,
+     width  = function() round(page_presets[[input$size_page]]$w_mm / 25.4 * size_dpi),
+     height = function() round(page_presets[[input$size_page]]$h_mm / 25.4 * size_dpi))
+
+  # Scale note per page, computed outside the graphics device so it's
+  # always legible. Shares compute_fit() with the actual render, so it
+  # can't disagree with what's on screen.
+  output$size_notes <- renderUI({
+    x <- input$size_x; y <- input$size_y
+    req(x, y)
+    items <- lapply(names(page_presets), function(nm) {
+      p   <- page_presets[[nm]]
+      f   <- compute_fit(p, x, y)
+      pct <- round(f$scale * 100)
+      msg <- if (abs(f$scale - 1) < 0.01) {
+        "shown at its native export size."
+      } else if (f$scale < 1) {
+        sprintf("scaled down to %d%% of its export size (%.0f × %.0fmm) to fit.", pct, f$disp_w, f$disp_h)
+      } else {
+        sprintf("scaled up to %d%% of its export size (%.0f × %.0fmm) to fill the space.", pct, f$disp_w, f$disp_h)
+      }
+      tags$li(tags$strong(nm), ": ", msg)
+    })
+    tags$div(style = "margin-top: 8px;", tags$ul(items))
   })
 
   # ---- 9. Sequential fill — colour-system ramp demo -----------------------
@@ -707,6 +933,65 @@ server <- function(input, output, session) {
     } else {
       p + scale_fill_gradientn(colours = viridisLite::viridis(256, option = input$pal_seq), name = NULL)
     }
+  })
+
+  # ---- 10. Ramp preview, full n_variants, faceted by source colour ----------
+  output$p_ramp_facet <- renderPlot({
+    years <- 1980:2020
+
+    families <- list(Primary = primary_ramp(), Contrast = contrast_ramp())
+    if (isTRUE(input$use_extra)) families$Extra <- extra_ramp()
+
+    build_family <- function(ramp, label) {
+      n   <- length(ramp)
+      mid <- (n + 1) / 2
+      bind_rows(lapply(seq_along(ramp), function(i) {
+        g <- 0.015 + 0.006 * (i - mid) / max(1, mid - 1)
+        tibble(ramp_type = label, variant = i, hex = ramp[i],
+               year = years, y = 100 * (1 + g) ^ (years - min(years)))
+      }))
+    }
+
+    d <- bind_rows(lapply(names(families), function(nm) build_family(families[[nm]], nm))) |>
+      mutate(ramp_type = factor(ramp_type, levels = names(families)))
+
+    ggplot(d, aes(year, y, colour = hex, group = interaction(ramp_type, variant))) +
+      geom_line(linewidth = input$line_width) +
+      scale_colour_identity() +
+      facet_wrap(~ ramp_type, nrow = 1) +
+      labs_(title    = "Ramp preview",
+            subtitle = sprintf("%d variants per ramp, light -> dark", length(families[[1]])),
+            x = "Year", y = "Index") +
+      th()
+  })
+
+  # ---- 11. Ramp preview, 3 shades of primary + contrast, one graph ----------
+  output$p_ramp3 <- renderPlot({
+    years        <- 1980:2020
+    shade_labels <- c("Light", "Base", "Dark")
+    growth       <- c(0.030, 0.020, 0.010)
+    p3 <- make_ramp(input$primary,  n = 3, spread = input$ramp_spread)
+    c3 <- make_ramp(input$contrast, n = 3, spread = input$ramp_spread)
+
+    fam <- function(hexes, label, offset) {
+      bind_rows(lapply(seq_along(hexes), function(i) {
+        tibble(series = paste(label, shade_labels[i]),
+               hex    = hexes[i],
+               year   = years,
+               y      = offset * (1 + growth[i]) ^ (years - min(years)))
+      }))
+    }
+    d <- bind_rows(fam(p3, "Primary", 100), fam(c3, "Contrast", 90))
+    d$series <- factor(d$series, levels = unique(d$series))
+    pal_named <- setNames(d$hex[match(levels(d$series), d$series)], levels(d$series))
+
+    ggplot(d, aes(year, y, colour = series, group = series)) +
+      geom_line(linewidth = input$line_width) +
+      scale_colour_manual(values = pal_named, name = NULL) +
+      labs_(title    = "Ramp preview, 3 shades",
+            subtitle = "Primary & contrast: light / base / dark",
+            x = "Year", y = "Index") +
+      th()
   })
 
   # ---- Colour-system ramp swatches -----------------------------------------
@@ -1028,7 +1313,7 @@ theme_rasmus <- function(base_size = %d, base_family = "%s", dark = %s) {
       legend.text        = ggplot2::element_text(size = base_size * 0.85, colour = s$mid),
       legend.key.size    = grid::unit(%d, "pt"),
       strip.text         = ggplot2::element_text(size = base_size * 0.9, face = "bold", colour = s$fg),
-      strip.background   = ggplot2::element_rect(fill = s$strip, colour = NA),
+      strip.background   = ggplot2::element_rect(fill = "white", colour = "black", linewidth = 0.4),
       plot.margin        = ggplot2::margin(10, 12, 8, 10)
     )
 }

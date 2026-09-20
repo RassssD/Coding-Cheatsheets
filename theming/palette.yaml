@@ -8,30 +8,38 @@
 # runtime). When you change a value here, update every theme file that
 # embeds it.
 #
-# STATUS: placeholder. Colors/fonts below are not final - do not treat them
-# as the real palette yet. Fill in and then propagate to the per-language
-# theme files in theming/R, theming/Stata, theming/python, theming/latex.
+# STATUS: font + qualitative palette are final (settled in the R palette
+# tester, theming/wip/palettetester.R, and in use in theming/R/theme_rd.R).
+# Semantic roles below (accent/positive/negative/neutral_grey/text) are not
+# decided yet - do not treat those as real. Propagate any future change to
+# the finalized fields into every per-language theme file (theming/R's
+# theme_rd.R, theming/Stata, theming/python, theming/latex - the latter
+# three are still placeholders themselves and haven't been built out yet).
 # ==============================================================================
 
 font:
-  primary: TODO      # e.g. "Lato" - exact family name as installed
+  primary: Inter
   fallback: sans-serif
 
 colors:
-  # Core qualitative palette (categorical series, group comparisons)
+  # Core qualitative palette (categorical series, group comparisons).
+  # Order: primary, secondary, contrast, extra accent.
   qualitative:
-    - "#TODO1"
-    - "#TODO2"
-    - "#TODO3"
-    - "#TODO4"
+    - "#1E53A4"
+    - "#CAB06B"
+    - "#E72922"
+    - "#006637"
 
-  # Sequential (low -> high, single hue ramp)
-  sequential: "#TODO_LOW -> #TODO_HIGH"
+  # Sequential (low -> high, single hue ramp). Not a fixed pair of hexes -
+  # generated at runtime from the qualitative palette's primary colour
+  # (#1E53A4) via a light/dark HCL ramp (rd_make_ramp() in theme_rd.R).
+  sequential: "generated from qualitative[1] (primary) via rd_make_ramp()"
 
-  # Diverging (negative <-> positive around a neutral midpoint)
-  diverging: "#TODO_NEG -> #TODO_MID -> #TODO_POS"
+  # Diverging (negative <-> positive around a neutral midpoint). Same
+  # approach: contrast colour's ramp (reversed) -> white -> primary ramp.
+  diverging: "generated from qualitative[3] (contrast) reversed -> white -> qualitative[1] (primary), via rd_make_ramp()"
 
-  # Semantic roles used across plots/tables
+  # Semantic roles used across plots/tables - not decided yet.
   accent: "#TODO"
   positive: "#TODO"
   negative: "#TODO"

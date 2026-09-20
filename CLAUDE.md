@@ -15,24 +15,29 @@ match Rasmus's visual style instead of language defaults (e.g. ggplot2's
 - `theming/palette.yaml` - single source of truth for the shared palette and
   font. Per-language theme files mirror these values by hand (most of these
   languages can't load YAML at runtime), so if you edit a colour here,
-  propagate it to every `theming/<Language>/theme_rasmus.*` file too.
+  propagate it to every per-language theme file too (R's is
+  `theming/R/theme_rd.R`; Stata/Python/LaTeX still use the older
+  `theme_rasmus.*` naming, pending their own build-out).
 
 Currently populated: `R`, `Stata`. Scaffolded but not yet filled in:
 `Python`, `LaTeX`.
 
 ## Status
 
-`theming/palette.yaml` and all `theming/<Language>/theme_rasmus.*` files are
-**placeholders** (TODO hex codes) - the actual palette/font hasn't been
-chosen yet. Don't treat current values in those files as real; check
-`palette.yaml` for a TODO before relying on any theme file for actual colors.
+`theming/R/theme_rd.R` is final and in use - font (Inter) and the
+qualitative colour palette are real, mirrored in `theming/palette.yaml`.
+Semantic roles in `palette.yaml` (accent/positive/negative/neutral_grey/
+text) are still TODO, as are the Stata/Python/LaTeX theme files - don't
+treat values in those as real. Check `palette.yaml` for a TODO before
+relying on any theme file for actual colors.
 
 ## Conventions for integrating this into another project
 
 - Prefer sourcing/importing these files directly (e.g. R `source()`, Python
   `import`, Stata `do`) over copy-pasting, so fixes here propagate.
-- When generating plots/tables for Rasmus in R, Stata, Python, or LaTeX,
-  apply the matching `theming/<Language>/theme_rasmus.*` file rather than a
-  library's default style - once palette.yaml is no longer a placeholder.
+- When generating plots for Rasmus in R, apply `theming/R/theme_rd.R`
+  (`theme_rd()`, `theme_rd_pres()`/`theme_rd_art()` add-ons, `scale_*_rd()`)
+  rather than a library's default style - see that file's header for usage.
+  Stata/Python/LaTeX equivalents aren't built out yet.
 - Helper functions here favor being self-contained (deps referenced via `::`
   or explicit imports, not attached) so they drop into another script cleanly.
